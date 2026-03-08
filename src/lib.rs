@@ -55,7 +55,7 @@ mod types;
 
 // Re-export public API
 pub use builder::{tile, MosaicBuilder};
-pub use drag_drop::{DragGhost, DragState, DropZone};
+pub use drag_drop::{DragGhost, DragState, DropZone, ResizeState, TileRefs};
 pub use layout::MosaicLayout;
 pub use mosaic::Mosaic;
 pub use split_pane::SplitPane;
