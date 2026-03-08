@@ -1,81 +1,122 @@
 use dioxus::prelude::*;
-use crate::drag_drop::{DragGhost, DragState};
+use crate::drag_drop::{DragGhost, DragState, ResizeState, TileRect, TileRefs};
 use crate::layout::MosaicLayout;
 use crate::node::Node;
 use crate::split_pane::SplitPane;
 use crate::tile_pane::TilePane;
 use crate::types::{NodeId, TileId};
 
-/// Props for the Mosaic component
 #[derive(PartialEq, Clone, Props)]
 pub struct MosaicProps {
-    /// Signal containing the MosaicLayout
     pub layout: Signal<MosaicLayout>,
-
-    /// Function to render each tile's content
-    /// Takes a TileId and returns an optional Element
     pub render_tile: Signal<Box<dyn Fn(TileId) -> Option<Element>>>,
-
-    /// Function to render each tile's title
-    /// Takes a TileId and returns an Element for the title
     pub render_title: Signal<Box<dyn Fn(TileId) -> Element>>,
-
-    /// Optional function to render empty state when no tiles are open
-    /// If not provided, a default message will be shown
     #[props(default = None)]
     pub render_empty_state: Option<Signal<Box<dyn Fn() -> Element>>>,
 }
 
-/// Main mosaic component
-///
-/// Renders a tiling window manager with resizable splits and dynamic tiles.
-///
-/// # Example
-/// ```ignore
-/// let render_fn = use_signal(|| Box::new(move |tile_id: String| {
-///     match tile_id.as_str() {
-///         "editor" => Some(rsx! { EditorPanel {} }),
-///         "sidebar" => Some(rsx! { SidebarPanel {} }),
-///         _ => None
-///     }
-/// }) as Box<dyn Fn(String) -> Option<Element>>);
-///
-/// Mosaic {
-///     layout: layout_signal,
-///     render_tile: render_fn,
-/// }
-/// ```
 pub fn Mosaic(props: MosaicProps) -> Element {
-    let layout = props.layout;
+    let mut layout = props.layout;
+    let mut drag_state = use_signal(DragState::new);
+    let tile_refs = use_signal(TileRefs::new);
+    let resize_state = use_signal(ResizeState::default);
 
-    // Initialize drag state
-    let drag_state = use_signal(DragState::new);
-
-    // Provide layout signal, drag state, and render functions to all child components via context
     use_context_provider(|| layout);
     use_context_provider(|| drag_state);
+    use_context_provider(|| tile_refs);
+    use_context_provider(|| resize_state);
     use_context_provider(|| props.render_tile);
     use_context_provider(|| props.render_title);
 
     let root_id = layout.read().root().cloned();
 
+    let handle_mouse_move = move |evt: Event<MouseData>| {
+        if !drag_state.read().is_dragging() {
+            return;
+        }
+
+        let mouse_x = evt.page_coordinates().x as f64;
+        let mouse_y = evt.page_coordinates().y as f64;
+
+        // If we don't have cached rects yet, fetch them asynchronously (once)
+        if drag_state.read().cached_rects.is_empty() && !drag_state.read().rects_fetching {
+            drag_state.write().rects_fetching = true;
+
+            let dragging_tile_id = drag_state.read().dragging_tile_id.clone();
+            let refs_snapshot: Vec<_> = tile_refs
+                .read()
+                .refs
+                .iter()
+                .filter(|(tid, _)| Some(*tid) != dragging_tile_id.as_ref())
+                .map(|(tid, mounted)| (tid.clone(), mounted.clone()))
+                .collect();
+
+            spawn(async move {
+                let mut rects = std::collections::HashMap::new();
+                for (tid, mounted) in refs_snapshot {
+                    if let Ok(rect) = mounted.get_client_rect().await {
+                        rects.insert(tid, TileRect {
+                            x: rect.origin.x,
+                            y: rect.origin.y,
+                            width: rect.size.width,
+                            height: rect.size.height,
+                        });
+                    }
+                }
+                let mut state = drag_state.write();
+                state.cached_rects = rects;
+                state.rects_fetching = false;
+                state.update_hover_from_cache();
+            });
+
+            drag_state.write().update_position(mouse_x, mouse_y);
+            return;
+        }
+
+        let mut state = drag_state.write();
+        state.update_position(mouse_x, mouse_y);
+        state.update_hover_from_cache();
+    };
+
+    let handle_mouse_up = move |_evt: Event<MouseData>| {
+        if !drag_state.read().is_dragging() {
+            return;
+        }
+
+        let dragged_tile = match drag_state.read().dragging_tile_id.clone() {
+            Some(tid) => tid,
+            None => return,
+        };
+
+        if let Some((target_tile, zone)) = drag_state.read().hover_target.clone() {
+            if dragged_tile != target_tile {
+                layout.write().insert_tile_with_split(&dragged_tile, &target_tile, zone);
+            }
+        }
+
+        drag_state.write().end_drag();
+    };
+
     rsx! {
         div {
             class: "mosaic-container",
-            style: "width: 100%; height: 100%; position: relative;",
+            style: {
+                let block_selection = drag_state.read().is_dragging() || resize_state.read().is_resizing;
+                let user_select = if block_selection { "user-select: none; -webkit-user-select: none;" } else { "" };
+                format!("width: 100%; height: 100%; position: relative; {user_select}")
+            },
+            onmousemove: handle_mouse_move,
+            onmouseup: handle_mouse_up,
 
-            // Render content based on whether layout is empty
             if let Some(root) = root_id {
-                // Recursively render from root
                 MosaicNode {
+                    key: "{root}",
                     node_id: root,
                 }
             } else {
-                // Render empty state
                 if let Some(render_empty) = props.render_empty_state {
                     {(render_empty.read())()}
                 } else {
-                    // Default empty state
                     div {
                         style: "
                             display: flex;
@@ -90,7 +131,6 @@ pub fn Mosaic(props: MosaicProps) -> Element {
                 }
             }
 
-            // Render drag ghost when dragging
             if drag_state.read().is_dragging() {
                 DragGhost {
                     drag_state: drag_state,
@@ -101,7 +141,6 @@ pub fn Mosaic(props: MosaicProps) -> Element {
     }
 }
 
-/// Internal component for rendering a single node (recursively)
 #[component]
 fn MosaicNode(node_id: NodeId) -> Element {
     let mut layout = use_context::<Signal<MosaicLayout>>();
@@ -115,17 +154,16 @@ fn MosaicNode(node_id: NodeId) -> Element {
             locked,
             ..
         }) => {
-            // Clone tile_id for use in multiple closures
             let tile_id_for_horizontal = tile_id.clone();
             let tile_id_for_vertical = tile_id.clone();
             let tile_id_for_close = tile_id.clone();
 
-            // Render title and content
             let title = (render_title.read())(tile_id.clone());
             let content = (render_tile.read())(tile_id.clone());
 
             rsx! {
                 TilePane {
+                    key: "{node_id}",
                     tile_id: tile_id.clone(),
                     title_component: title,
                     locked: locked,
@@ -163,11 +201,13 @@ fn MosaicNode(node_id: NodeId) -> Element {
             split_percentage,
             ..
         }) => {
-            // Render a split with two children
             let node_id_for_resize = node_id.clone();
+
+            let split_key = format!("{node_id}:{direction:?}");
 
             rsx! {
                 SplitPane {
+                    key: "{split_key}",
                     direction: direction,
                     initial_size: split_percentage,
                     min_size: 20.0,
@@ -178,12 +218,14 @@ fn MosaicNode(node_id: NodeId) -> Element {
 
                     first_pane: rsx! {
                         MosaicNode {
+                            key: "{first}",
                             node_id: first.clone(),
                         }
                     },
 
                     second_pane: rsx! {
                         MosaicNode {
+                            key: "{second}",
                             node_id: second.clone(),
                         }
                     },
@@ -192,7 +234,6 @@ fn MosaicNode(node_id: NodeId) -> Element {
         }
 
         None => {
-            // Node not found (shouldn't happen)
             rsx! {
                 div {
                     style: "color: red; padding: 1rem;",
