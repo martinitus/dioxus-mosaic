@@ -6,5 +6,6 @@ default_platform = "web"
 title = "dioxus-mosaic examples"
 
 [web.watcher]
+watch_path = ["src", "examples"]
 
 [web.resource.dev]
