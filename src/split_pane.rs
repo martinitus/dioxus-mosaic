@@ -23,10 +23,11 @@ pub fn SplitPane(
     let mut container_ref: Signal<Option<MountedEvent>> = use_signal(|| None);
     let mut resize_state = use_context::<Signal<ResizeState>>();
 
-    // Sync split_pos when initial_size prop changes (e.g. after drag-drop rearrangement)
-    use_effect(move || {
+    // Sync split_pos when the layout provides a new initial_size (e.g. after drag-drop).
+    // Direct prop comparison is needed because use_effect doesn't track non-signal values.
+    if !is_dragging() && (split_pos() - initial_size).abs() > 0.01 {
         split_pos.set(initial_size);
-    });
+    }
 
     // Mouse move handler for dragging
     let handle_mouse_move = move |evt: Event<MouseData>| {
