@@ -1,6 +1,6 @@
+use crate::drag_drop::ResizeState;
 use crate::types::SplitDirection;
 use dioxus::prelude::*;
-use wasm_bindgen::JsCast;
 
 /// A resizable split pane component
 ///
@@ -20,7 +20,13 @@ pub fn SplitPane(
     let mut split_pos = use_signal(|| initial_size);
     let mut is_dragging = use_signal(|| false);
     let mut is_hovering = use_signal(|| false);
-    let mut container_ref = use_signal(|| None::<web_sys::HtmlElement>);
+    let mut container_ref: Signal<Option<MountedEvent>> = use_signal(|| None);
+    let mut resize_state = use_context::<Signal<ResizeState>>();
+
+    // Sync split_pos when initial_size prop changes (e.g. after drag-drop rearrangement)
+    use_effect(move || {
+        split_pos.set(initial_size);
+    });
 
     // Mouse move handler for dragging
     let handle_mouse_move = move |evt: Event<MouseData>| {
@@ -28,25 +34,28 @@ pub fn SplitPane(
             return;
         }
 
-        if let Some(container) = container_ref() {
-            let rect = container.get_bounding_client_rect();
+        if let Some(ref container) = container_ref() {
+            let container = container.clone();
+            spawn(async move {
+                if let Ok(rect) = container.get_client_rect().await {
+                    let new_pos = match direction {
+                        SplitDirection::Horizontal => {
+                            let x = evt.page_coordinates().x as f64;
+                            let container_x = rect.origin.x;
+                            let container_width = rect.size.width;
+                            ((x - container_x) / container_width * 100.0).clamp(min_size, max_size)
+                        }
+                        SplitDirection::Vertical => {
+                            let y = evt.page_coordinates().y as f64;
+                            let container_y = rect.origin.y;
+                            let container_height = rect.size.height;
+                            ((y - container_y) / container_height * 100.0).clamp(min_size, max_size)
+                        }
+                    };
 
-            let new_pos = match direction {
-                SplitDirection::Horizontal => {
-                    let x = evt.page_coordinates().x as f64;
-                    let container_x = rect.left();
-                    let container_width = rect.width();
-                    ((x - container_x) / container_width * 100.0).clamp(min_size, max_size)
+                    split_pos.set(new_pos);
                 }
-                SplitDirection::Vertical => {
-                    let y = evt.page_coordinates().y as f64;
-                    let container_y = rect.top();
-                    let container_height = rect.height();
-                    ((y - container_y) / container_height * 100.0).clamp(min_size, max_size)
-                }
-            };
-
-            split_pos.set(new_pos);
+            });
         }
     };
 
@@ -55,6 +64,7 @@ pub fn SplitPane(
         if is_dragging() {
             let current_pos = split_pos();
             is_dragging.set(false);
+            resize_state.write().is_resizing = false;
             // Notify parent of new position
             if let Some(handler) = &on_resize {
                 handler.call(current_pos);
@@ -72,13 +82,7 @@ pub fn SplitPane(
             class: "split-pane",
                 // style: "margin: 0.5rem;",
             onmounted: move |evt| {
-                spawn(async move {
-                    if let Some(element) = evt.data().downcast::<web_sys::Element>() {
-                        if let Ok(html_element) = element.clone().dyn_into::<web_sys::HtmlElement>() {
-                            container_ref.set(Some(html_element));
-                        }
-                    }
-                });
+                container_ref.set(Some(evt.clone()));
             },
             onmousemove: handle_mouse_move,
             onmouseup: handle_mouse_up,
@@ -97,13 +101,18 @@ pub fn SplitPane(
                     SplitDirection::Horizontal => "grid-template-columns",
                     SplitDirection::Vertical => "grid-template-rows",
                 };
+                let cross_axis = match direction {
+                    SplitDirection::Horizontal => "grid-template-rows: 1fr;",
+                    SplitDirection::Vertical => "grid-template-columns: 1fr;",
+                };
                 format!("
                     display: grid;
                     {}: {};
+                    {}
                     width: 100%;
                     height: 100%;
                     {}
-                ", grid_direction, grid_template, if is_dragging() { "user-select: none;" } else { "" })
+                ", grid_direction, grid_template, cross_axis, if is_dragging() { "user-select: none;" } else { "" })
             },
 
             // First pane
@@ -118,6 +127,7 @@ pub fn SplitPane(
                 class: "split-gap-before",
                 onmousedown: move |_evt| {
                     is_dragging.set(true);
+                    resize_state.write().is_resizing = true;
                 },
                 onmouseenter: move |_evt| {
                     is_hovering.set(true);
@@ -136,6 +146,7 @@ pub fn SplitPane(
                 class: "split-divider",
                 onmousedown: move |_evt| {
                     is_dragging.set(true);
+                    resize_state.write().is_resizing = true;
                 },
                 onmouseenter: move |_evt| {
                     is_hovering.set(true);
@@ -194,6 +205,7 @@ pub fn SplitPane(
                 class: "split-gap-after",
                 onmousedown: move |_evt| {
                     is_dragging.set(true);
+                    resize_state.write().is_resizing = true;
                 },
                 onmouseenter: move |_evt| {
                     is_hovering.set(true);
