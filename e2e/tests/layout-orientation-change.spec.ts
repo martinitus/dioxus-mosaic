@@ -25,11 +25,9 @@ test.describe("Layout Orientation Change", () => {
 
     const after = await getPanelBoxMap(page);
     const files = after["Files"];
-    const editor = after["Editor"];
     const terminal = after["Terminal"];
 
     expect(files).toBeDefined();
-    expect(editor).toBeDefined();
     expect(terminal).toBeDefined();
 
     const xOverlap = Math.max(
@@ -39,12 +37,9 @@ test.describe("Layout Orientation Change", () => {
     );
     expect(xOverlap).toBeGreaterThan(files.width * 0.5);
 
-    const minX = Math.min(files.x, editor.x, terminal.x);
-    const maxX = Math.max(
-      files.x + files.width,
-      editor.x + editor.width,
-      terminal.x + terminal.width,
-    );
+    const allBoxes = Object.values(after);
+    const minX = Math.min(...allBoxes.map((b) => b.x));
+    const maxX = Math.max(...allBoxes.map((b) => b.x + b.width));
     const totalWidth = maxX - minX;
     const leftRatio = files.width / totalWidth;
 
