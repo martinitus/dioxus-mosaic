@@ -1,10 +1,5 @@
 import { test, expect } from "@playwright/test";
-import {
-  openApp,
-  getHeaderCenter,
-  getPanelBox,
-  simulateDrag,
-} from "./helpers";
+import { openApp, getHeaderCenter, getPanelBox, simulateDrag } from "./helpers";
 
 test.describe("State Persistence", () => {
   test.beforeEach(async ({ page }) => {

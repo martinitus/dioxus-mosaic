@@ -1,11 +1,5 @@
 import { test, expect } from "@playwright/test";
-import {
-  openApp,
-  getHeaderCenter,
-  getPanelBox,
-  getPanelBoxMap,
-  simulateDrag,
-} from "./helpers";
+import { openApp, getHeaderCenter, getPanelBox, getPanelBoxMap, simulateDrag } from "./helpers";
 
 test.describe("Layout Orientation Change", () => {
   test.beforeEach(async ({ page }) => {
@@ -32,8 +26,7 @@ test.describe("Layout Orientation Change", () => {
 
     const xOverlap = Math.max(
       0,
-      Math.min(files.x + files.width, terminal.x + terminal.width) -
-        Math.max(files.x, terminal.x),
+      Math.min(files.x + files.width, terminal.x + terminal.width) - Math.max(files.x, terminal.x),
     );
     expect(xOverlap).toBeGreaterThan(files.width * 0.5);
 

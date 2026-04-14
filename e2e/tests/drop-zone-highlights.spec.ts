@@ -11,9 +11,7 @@ test.describe("Drop Zone Highlights", () => {
 
     const hasVisibleDropZone = await page.evaluate(() =>
       Array.from(document.querySelectorAll(".drop-zone")).some(
-        (el) =>
-          getComputedStyle(el).display !== "none" &&
-          getComputedStyle(el).opacity !== "0",
+        (el) => getComputedStyle(el).display !== "none" && getComputedStyle(el).opacity !== "0",
       ),
     );
     expect(hasVisibleDropZone).toBe(true);

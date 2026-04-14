@@ -1,11 +1,5 @@
 import { test, expect } from "@playwright/test";
-import {
-  openApp,
-  getHeaderCenter,
-  getPanelBox,
-  getPanelBoxMap,
-  simulateDrag,
-} from "./helpers";
+import { openApp, getHeaderCenter, getPanelBox, getPanelBoxMap, simulateDrag } from "./helpers";
 
 test.describe("Panel Sizing", () => {
   test.beforeEach(async ({ page }) => {
@@ -49,10 +43,7 @@ test.describe("Panel Sizing", () => {
     expect(terminal).toBeDefined();
 
     const unionLeft = Math.min(files.x, terminal.x);
-    const unionRight = Math.max(
-      files.x + files.width,
-      terminal.x + terminal.width,
-    );
+    const unionRight = Math.max(files.x + files.width, terminal.x + terminal.width);
     const unionWidth = unionRight - unionLeft;
     const filesRatio = files.width / unionWidth;
 
@@ -60,9 +51,7 @@ test.describe("Panel Sizing", () => {
     expect(filesRatio).toBeLessThanOrEqual(0.65);
   });
 
-  test("Files and Terminal heights are balanced after drop", async ({
-    page,
-  }) => {
+  test("Files and Terminal heights are balanced after drop", async ({ page }) => {
     const start = await getHeaderCenter(page, "Files");
     const terminalPane = await getPanelBox(page, "Terminal");
     const endX = terminalPane.x + terminalPane.width * 0.9;
@@ -79,8 +68,7 @@ test.describe("Panel Sizing", () => {
     expect(terminal).toBeDefined();
 
     const heightFillRatio =
-      Math.min(files.height, terminal.height) /
-      Math.max(files.height, terminal.height);
+      Math.min(files.height, terminal.height) / Math.max(files.height, terminal.height);
     expect(heightFillRatio).toBeGreaterThanOrEqual(0.6);
   });
 });
