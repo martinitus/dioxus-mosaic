@@ -108,7 +108,8 @@ pub fn Mosaic(props: MosaicProps) -> Element {
     };
 
     if let Some(mounted) = container_ref.read().clone() {
-        let needs_measure = !container_rect.read().has_size() || *last_measure_key.read() != measure_key;
+        let needs_measure =
+            !container_rect.read().has_size() || *last_measure_key.read() != measure_key;
         if needs_measure && !is_measuring() {
             is_measuring.set(true);
             last_measure_key.set(measure_key.clone());
@@ -387,7 +388,8 @@ fn FlatDivider(divider_rect: DividerRect, origin_px: f64, extent_px: f64) -> Ele
         max_percentage,
         locked,
         ..
-    }) = split_node else {
+    }) = split_node
+    else {
         return rsx! { div { style: "display: none;" } };
     };
 
@@ -468,10 +470,7 @@ fn collect_bounds(
     match layout.get_node(node_id)? {
         Node::Tile { tile_id, .. } => tile_rect_map.get(tile_id).map(Bounds::from_tile_rect),
         Node::Split {
-            id,
-            first,
-            second,
-            ..
+            id, first, second, ..
         } => {
             let first_bounds = collect_bounds(layout, first, tile_rect_map, split_bounds)?;
             let second_bounds = collect_bounds(layout, second, tile_rect_map, split_bounds)?;
